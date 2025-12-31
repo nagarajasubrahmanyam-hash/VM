@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vedic Forensic Engine - Pro</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js"></script>
+</head>
+<body>
+
+<div class="container main-dashboard">
+    <header class="app-header">
+        <h1>Jyotish BTR Forensic Engine</h1>
+        <p>Parashara (D60) • Jaimini (Vighatika) • Tattwa (Kunda)</p>
+        <button class="theme-toggle" onclick="app.toggleTheme()" title="Toggle Dark Mode">🌓</button>
+    </header>
+
+    <section class="panel control-deck">
+        <div class="deck-header">
+            <div class="mode-tabs">
+                <button class="mode-tab active" onclick="app.ui.switchTab('standard')">Standard BTR</button>
+                <button class="mode-tab" onclick="app.ui.switchTab('jaimini')">Jaimini Authentic</button>
+                <button class="mode-tab" onclick="app.ui.switchTab('tattwa')">Tattwa / Kunda</button>
+            </div>
+            
+            <div class="toolbar">
+                <button onclick="app.loadSample('m')" class="btn-tool">📥 Load Sample</button>
+                <button onclick="app.clearData('m')" class="btn-tool">🧹 Clear</button>
+            </div>
+        </div>
+        
+        <div id="tab_standard" class="tab-content-area">
+            <div class="input-grid">
+                <div class="input-group-box">
+                    <label class="group-label">Birth Details</label>
+                    <div class="row">
+                        <select id="m_gender" style="flex: 0 0 90px;">
+                            <option value="MALE">Male</option>
+                            <option value="FEMALE">Female</option>
+                            <option value="OTHER">Other</option>
+                        </select>
+                        <input type="text" id="m_name" placeholder="Name" oninput="app.updateLiveSound('m')" onchange="app.calculate('m')">
+                        
+                        <div style="position:relative; width:100%;">
+                            <input type="text" id="m_city" placeholder="Type City..." 
+                                   autocomplete="off" oninput="app.ui.handleSearchDebounced('m')">
+                            <div id="m_city_results" class="results-dropdown"></div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <input type="date" id="m_dob">
+                        <input type="time" id="m_tob" step="1">
+                        <input type="number" id="m_tz" value="5.5" placeholder="TZ" style="width:70px">
+                    </div>
+                    <input type="hidden" id="m_lat"><input type="hidden" id="m_lon">
+                </div>
+
+                <div class="input-group-box">
+                    <label class="group-label">Forensic Keys</label>
+                    <div class="live-status-bar">
+                        <div class="status-badge">
+                            <span class="status-label">SOUND</span>
+                            <span id="m_feedback_sound" class="status-value">--</span>
+                        </div>
+                        <div class="status-badge">
+                            <span class="status-label">ARUDHA</span>
+                            <span id="m_feedback_arudha" class="status-value">--</span>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <select id="m_sound" onchange="app.calculate('m')">
+                            <option value="AUTO">Sound: Auto</option>
+                        </select>
+                        <select id="m_arudha" onchange="app.calculate('m')">
+                            <option value="AUTO">AL: Auto</option>
+                            <option value="0">Ar</option><option value="1">Ta</option>
+                            <option value="2">Ge</option><option value="3">Cn</option>
+                            <option value="4">Le</option><option value="5">Vi</option>
+                            <option value="6">Li</option><option value="7">Sc</option>
+                            <option value="8">Sg</option><option value="9">Cp</option>
+                            <option value="10">Aq</option><option value="11">Pi</option>
+                        </select>
+                    </div>
+                    <div class="stepper-row">
+                        <button onclick="app.adjustTime('m', -10)">-10s</button>
+                        <button onclick="app.adjustTime('m', -1)">-1s</button>
+                        <button onclick="app.adjustTime('m', 1)">+1s</button>
+                        <button onclick="app.adjustTime('m', 10)">+10s</button>
+                    </div>
+                    <div class="row" style="margin-top: 10px;">
+                        <button onclick="app.autoFixPranapada('m')" class="btn-tool" style="background: var(--primary); width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                            <span>🎯</span> Auto-Fix Pranapada (D9)
+                        </button>
+                    </div>
+                </div>
+
+                <div class="input-group-box action-box">
+                    <label class="group-label">Execution</label>
+                    <button onclick="app.calculate('m')" class="btn-run">Run Engine</button>
+                    <button onclick="app.scan20MinWindow('m')" class="btn-scan">Scan ±10m</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab_jaimini" class="tab-content-area" style="display:none;">
+            <div class="input-grid">
+                <div class="input-group-box">
+                    <label class="group-label">Vighatika Engine</label>
+                    <div class="info-box-sm">
+                        <small>1 VG = 24 Seconds. Auto-calculated from Sunrise.</small>
+                    </div>
+                    <div class="row">
+                        <div style="flex:1">
+                            <label style="font-size:0.65rem; color:var(--text-muted)">Sunrise (Local)</label>
+                            <input type="text" id="m_sunrise_display" readonly style="background:var(--hover-bg); color:var(--text-muted);">
+                        </div>
+                        <div style="flex:1">
+                            <label style="font-size:0.65rem; color:var(--text-muted)">Current VG Planet</label>
+                            <input type="text" id="m_vig_display" readonly style="background:var(--hover-bg); color:var(--primary); font-weight:bold;">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="input-group-box">
+                    <label class="group-label">Jaimini Gender Test</label>
+                    <div class="row">
+                        <select id="m_vig_state">
+                            <option value="normal">VG State: Normal</option>
+                            <option value="exalted">VG State: Exalted</option>
+                            <option value="debilitated">VG State: Debilitated</option>
+                        </select>
+                        <button onclick="app.runJaiminiSexCheck('m')" class="btn-tool" style="background:var(--primary); color:white;">Check</button>
+                    </div>
+                    <div id="m_sex_result" class="result-box-sm" style="display:none;"></div>
+                </div>
+
+                <div class="input-group-box action-box">
+                    <label class="group-label">Micro-Scan (24s Slits)</label>
+                    <div class="table-scroll" style="max-height:120px; border:1px solid var(--border); border-radius:4px; margin-bottom:10px;">
+                        <table class="planet-table">
+                            <thead><tr><th>Adj</th><th>Time</th><th>Planet</th><th>Gen</th></tr></thead>
+                            <tbody id="m_jaimini_rect_body"></tbody>
+                        </table>
+                    </div>
+                    <button onclick="app.runJaiminiRect('m')" class="btn-scan">Run Micro-Scan</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab_tattwa" class="tab-content-area" style="display:none;">
+            <div class="input-grid">
+                <div class="input-group-box">
+                    <label class="group-label">Tattwa Shodhana</label>
+                    <div class="info-box-sm">
+                        <small>Element Check based on 24-min Sunrise Cycles.</small>
+                    </div>
+                    <div class="result-box-sm" id="m_tattwa_res" style="font-size:1rem;">-- Run Engine --</div>
+                </div>
+
+                <div class="input-group-box">
+                    <label class="group-label">Kunda (81) Verification</label>
+                    <div class="info-box-sm">
+                        <small>Formula: (Lagna × 81). Must be Trine/7th to Moon.</small>
+                    </div>
+                    <div class="result-box-sm" id="m_kunda_res" style="font-size:1rem;">-- Run Engine --</div>
+                </div>
+                
+                <div class="input-group-box"></div> 
+            </div>
+        </div>
+    </section>
+
+    <section class="panel timeline-container" id="forensic_map_panel" style="display:none;">
+        <div class="timeline-header">
+            <span>Forensic Timeline (±3 Minutes)</span>
+            <span>Quad-Lock Visualization</span>
+        </div>
+        <div style="padding-left:80px;">
+            <div class="timeline-tracks" id="timeline_tracks">
+                <div class="timeline-cursor"></div>
+            </div>
+        </div>
+        <div class="map-legend">
+            <div class="legend-item"><div class="dot seg-golden" style="background:#fbbf24; border-radius:0; width:10px; height:10px;"></div>Quad-Lock Match</div>
+            <div class="legend-item"><div class="dot seg-match"></div>Pass</div>
+            <div class="legend-item"><div class="dot seg-mismatch"></div>Fail</div>
+        </div>
+    </section>
+
+    <section id="visual_lab_section" class="panel forensic-lab-container">
+        
+        <div class="chart-viewer">
+            <div class="panel-head">
+                <span>Visual Verification</span>
+                <select id="chart1_varga" onchange="app.refreshCharts()" class="chart-select" style="margin:0; font-size:0.7rem; padding:4px;">
+                    <option value="D60" selected>Shashtiamsha (D60)</option>
+                    <option value="D9">Navamsa (D9)</option>
+                    <option value="D1">Rashi (D1)</option>
+                </select>
+            </div>
+            
+            <div id="si_chart1" class="si-container" style="border:none;"></div>
+            
+            <div style="margin-top:15px; border-top:1px solid var(--border); padding-top:10px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                    <span style="font-size:0.65rem; font-weight:800; color:var(--text-muted); text-transform:uppercase;">Secondary View</span>
+                    <select id="chart2_varga" onchange="app.refreshCharts()" class="chart-select" style="margin:0; font-size:0.65rem; width:auto; padding:2px;">
+                        <option value="D9" selected>Navamsa (D9)</option>
+                        <option value="D1">Rashi (D1)</option>
+                        <option value="D3-J">Drekkana (D3-J)</option>
+                    </select>
+                </div>
+                <div id="si_chart2" class="si-container" style="width: 240px; height: 240px; margin: 0 auto; font-size:0.6rem;"></div>
+            </div>
+            
+            <div style="margin-top:10px; text-align:center;">
+                <button onclick="document.getElementById('planet_data_panel').style.display = document.getElementById('planet_data_panel').style.display === 'none' ? 'block' : 'none'" class="btn-tool" style="width:100%; color:var(--text-muted); background:var(--hover-bg); border-color:var(--border);">Toggle Planet Data Table</button>
+             </div>
+             <div id="planet_data_panel" class="table-scroll" style="display:none; margin-top:10px; max-height:200px;">
+                <table class="planet-table">
+                    <thead><tr><th>Graha</th><th>Pos</th><th>D60</th><th>Deity</th></tr></thead>
+                    <tbody id="m_table_body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="auditor-wrapper">
+            <div id="m_suggestion" class="candidates-container" style="display:none;"></div>
+            
+            <div id="m_analysis">
+                <div style="padding:40px; text-align:center; color:var(--text-muted); font-size:0.9rem;">
+                    Run the engine to start the<br><strong>Forensic Verification Sequence</strong>
+                </div>
+            </div>
+            
+            <div id="m_scan_results" class="scan-box" style="display:none; margin-top:20px;">
+                <label class="group-label">Scan Results (±10m)</label>
+                <div class="table-scroll" style="max-height: 200px;">
+                    <table class="planet-table">
+                        <thead><tr><th>Time</th><th>Score</th><th>D60</th><th>Gen</th></tr></thead>
+                        <tbody id="m_scan_body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="m_logic_trace" class="trace-log" style="display:none; margin-top:10px;"></div>
+        </div>
+    </section>
+
+</div>
+
+<script src="js/constants.js"></script>
+<script src="js/astronomy-wrapper.js"></script>
+<script src="js/vedic-engine.js"></script>
+<script src="js/rectification-analyzer.js"></script>
+<script src="js/jaimini-engine.js"></script>
+<script src="js/tattwa-engine.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>
