@@ -60,7 +60,7 @@
                     <label class="group-label">3. Time & Zone</label>
                     <div class="row">
                         <input type="date" id="m_dob" onchange="app.ui.updateTzFromDate('m')">
-                        <input type="time" id="m_tob" step="1">
+                        <input type="time" id="m_tob" step="1" onchange="app.calculate('m')">
                     </div>
                     <div class="row" style="margin-top:5px; align-items: center;">
                         <div style="flex:1; display:flex; flex-direction:column;">
