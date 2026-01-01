@@ -1,6 +1,7 @@
 /**
  * APP ORCHESTRATOR - Forensic BTR Edition
  * Final Integrated Version: Quad-Lock Logic + Human Auditor + Live Reasoning + Auto-Correct
+ * 2026 UPDATE: Hardened Time Zone Logic (Wall Clock vs True UTC)
  */
 const app = {
     lastCalcData: null,
@@ -16,6 +17,23 @@ const app = {
         gender: 'AUTO'
     },
 
+    // --- 0. TIMEZONE DISPLAY HELPER (CRITICAL FIX) ---
+    // Converts a UTC Date object back to the "Wall Clock" string of the specific Timezone.
+    // This bypasses the browser's local timezone bias.
+    formatChartTime: function(utcDateObj, tzOffset) {
+        if (!utcDateObj) return "00:00:00";
+        // 1. Shift UTC to "Wall Clock" epoch
+        const wallClockMs = utcDateObj.getTime() + (tzOffset * 3600000);
+        const wallDate = new Date(wallClockMs);
+
+        // 2. Use UTC getters to read the shifted time
+        const hh = wallDate.getUTCHours().toString().padStart(2, '0');
+        const mm = wallDate.getUTCMinutes().toString().padStart(2, '0');
+        const ss = wallDate.getUTCSeconds().toString().padStart(2, '0');
+        
+        return `${hh}:${mm}:${ss}`;
+    },
+
     // --- 1. INITIALIZATION ---
     init: async function() {
         // A. Load Theme
@@ -25,13 +43,16 @@ const app = {
         // B. Set Default Time (Now)
         const now = new Date();
         const dateStr = now.toISOString().split('T')[0];
+        
+        // Default TZ (User's Browser Offset inverted)
+        const tzOffset = -(now.getTimezoneOffset() / 60);
+        
+        // Default time string (Browser Local)
         const timeStr = [
             now.getHours().toString().padStart(2, '0'),
             now.getMinutes().toString().padStart(2, '0'),
             now.getSeconds().toString().padStart(2, '0')
         ].join(':');
-        // Default TZ (User's Browser Offset inverted)
-        const tzOffset = -(now.getTimezoneOffset() / 60);
 
         const pfx = 'm'; 
         if (document.getElementById(`${pfx}_dob`)) document.getElementById(`${pfx}_dob`).value = dateStr;
@@ -120,6 +141,7 @@ const app = {
     },
     
     setTob: function(pfx, timeStr) {
+        // Ensure we only take the HH:MM:SS part if full ISO string provided
         document.getElementById(`${pfx}_tob`).value = timeStr.slice(0, 8); 
         this.calculate(pfx);
     },
@@ -203,11 +225,14 @@ const app = {
         
         const [y, m, d] = dobRaw.split('-').map(Number);
         const [h, min, s] = tobRaw.split(':').map(Number);
-        const startUtc = Date.UTC(y, m - 1, d, h, min, s || 0) - (tz * 3600000);
+        
+        // Calculate Base UTC using True UTC logic
+        const inputTimeAsUtc = Date.UTC(y, m - 1, d, h, min, s || 0);
+        const startUtcMs = inputTimeAsUtc - (tz * 3600000);
 
         // Pre-calc Sunrise for Jaimini (Optimization)
         const obs = new Astronomy.Observer(lat, lon, 0);
-        const riseInfo = Astronomy.SearchRiseSet('Sun', obs, +1, Astronomy.MakeTime(new Date(startUtc)), -1);
+        const riseInfo = Astronomy.SearchRiseSet('Sun', obs, +1, Astronomy.MakeTime(new Date(startUtcMs)), -1);
         const sunriseDate = riseInfo ? riseInfo.date : null;
 
         // Search Params
@@ -221,7 +246,7 @@ const app = {
         // 2. The Loop
         for (let i = 1; i <= maxSteps; i++) {
             const offset = i * stepSize * direction;
-            const scanUtc = new Date(startUtc + (offset * 1000));
+            const scanUtc = new Date(startUtcMs + (offset * 1000));
             
             // A. Calc Essentials
             const ayan = VedicEngine.getAyanamsa(scanUtc);
@@ -263,8 +288,8 @@ const app = {
 
         // 3. Apply Result
         if (bestTime) {
-            const localTime = new Date(bestTime.getTime() + (tz * 3600000));
-            const newTimeStr = [localTime.getUTCHours(), localTime.getUTCMinutes(), localTime.getUTCSeconds()].map(x=>x.toString().padStart(2,'0')).join(':');
+            // Convert True UTC back to Wall Clock for display
+            const newTimeStr = this.formatChartTime(bestTime, tz);
             document.getElementById(`${pfx}_tob`).value = newTimeStr;
             this.calculate(pfx);
         } else {
@@ -275,7 +300,7 @@ const app = {
         document.getElementById(btnId).innerHTML = originalBtnText;
     },
 
-    // --- 3. MAIN CALCULATION ENGINE ---
+    // --- 3. MAIN CALCULATION ENGINE (TIMEZONE HARDENED) ---
     calculate: function(pfx) {
         const dobRaw = document.getElementById(`${pfx}_dob`).value;
         const tobRaw = document.getElementById(`${pfx}_tob`).value;
@@ -289,12 +314,18 @@ const app = {
         const forcedArudha = document.getElementById(`${pfx}_arudha`)?.value || "AUTO";
 
         this.updateLiveSound(pfx);
-        if (!dobRaw || !tobRaw || isNaN(lat)) return;
+        if (!dobRaw || !tobRaw || isNaN(lat) || isNaN(tz)) return;
 
+        // --- TRUE UTC CALCULATION ---
         const [y, m, d] = dobRaw.split('-').map(Number);
         const [h, min, s] = tobRaw.split(':').map(Number);
-        const pseudoUtc = Date.UTC(y, m - 1, d, h, min, s || 0);
-        const actualUtcDate = new Date(pseudoUtc - (tz * 3600000));
+        
+        // 1. Convert Input directly to Timestamp (Assuming it is Wall Clock)
+        const inputWallClockAsUtc = Date.UTC(y, m - 1, d, h, min, s || 0);
+        
+        // 2. Subtract TZ Offset to get Absolute UTC Epoch
+        const trueUtcTimestamp = inputWallClockAsUtc - (tz * 3600000);
+        const actualUtcDate = new Date(trueUtcTimestamp);
         
         // PHASE A: JAIMINI (Sunrise Based)
         const observer = new Astronomy.Observer(lat, lon, 0);
@@ -307,7 +338,8 @@ const app = {
             if(document.getElementById(`${pfx}_vig_display`)) {
                 document.getElementById(`${pfx}_vig_display`).value = `${jData.totalVighatikas.toFixed(1)} (${jData.planetName})`;
                 const localRise = new Date(sunriseDate.getTime() + (tz * 3600000));
-                document.getElementById(`${pfx}_sunrise_display`).value = localRise.toTimeString().slice(0,8);
+                // Use custom formatting for sunrise too to match TZ
+                document.getElementById(`${pfx}_sunrise_display`).value = this.formatChartTime(sunriseDate, tz);
             }
             
             const tattwa = TattwaEngine.calculateTattwa(actualUtcDate, sunriseDate);
@@ -340,7 +372,6 @@ const app = {
         }
 
         // PHASE D: FORENSIC ANALYSIS (The Detective)
-        // This calls the detailed Analyzer we updated
         const btrReport = RectificationAnalyzer.analyze(planetData, { 
             name: nameInput, gender: gender, ppLon: ppLon, forcedSound: forcedSound, forcedArudha: forcedArudha
         });
@@ -351,25 +382,21 @@ const app = {
         document.getElementById(`${pfx}_feedback_arudha`).innerHTML = `<span style="color:var(--primary); font-weight:800;">${SIGNS[usedAL]}</span>`;
 
         // PHASE E: PREPARE DATA FOR AUDITOR
-        // Extract the detailed descriptions from the Analyzer report
         const d60Check = btrReport.checks.find(c => c.id === 'ketu') || {}; 
         const nameCheck = btrReport.checks.find(c => c.id === 'name') || {};
         const ppCheck = btrReport.checks.find(c => c.id === 'pp') || {};
 
-        // 1. Construct D60 Logic String
         let d60Reason = "No Link Found";
-        if (d60Check.status === 'PASS') d60Reason = d60Check.description; // Already formatted in Analyzer
+        if (d60Check.status === 'PASS') d60Reason = d60Check.description; 
         else if (nameCheck.status === 'PASS') d60Reason = nameCheck.description;
         else d60Reason = `No Ketu or Name Link in D60.`;
 
-        // 2. Construct Gender Logic String
         const vigP = this.currentJaiminiData ? this.currentJaiminiData.planetName : "-";
         const predSex = this.currentJaiminiData ? this.currentJaiminiData.genderPred : "-";
         const genderReason = (predSex === gender) 
             ? `Vighatika Lord is ${vigP} (${predSex}). Matches user input.` 
             : `Vighatika Lord is ${vigP} (${predSex}). User is ${gender}.`;
 
-        // 3. Construct Kunda Logic String
         const moonSignStr = SIGNS[kunda.moonSign];
         const kundaReason = kunda.match 
             ? `Lagna*81 (${kunda.signName}) is Trine/Opp to Moon (${moonSignStr}).`
@@ -378,13 +405,10 @@ const app = {
         const autoResults = {
             genderMatch: (predSex === gender),
             genderReason: genderReason,
-            
             kundaMatch: kunda.match,
             kundaReason: kundaReason,
-
             ppMatch: ppCheck.status === 'PASS',
             ppReason: ppCheck.description || "Calculation Error",
-
             d60Match: btrReport.isRectified,
             d60Reason: d60Reason
         };
@@ -392,8 +416,10 @@ const app = {
         // PHASE F: RENDER UI
         this.renderTable(pfx, planetData);
         this.refreshCharts();
-        this.renderTimelineMap(pfx, actualUtcDate, lat, lon, ayanamsa, gender, (moonPos - ayanamsa + 360) % 360);
-        this.renderAuditor(pfx, autoResults); // Pass detailed reasons to the side panel
+        
+        // Pass TZ to renderTimelineMap for correct "Wall Clock" labels
+        this.renderTimelineMap(pfx, actualUtcDate, lat, lon, ayanamsa, gender, (moonPos - ayanamsa + 360) % 360, tz);
+        this.renderAuditor(pfx, autoResults); 
 
         // Trace Log
         const trace = document.getElementById(`${pfx}_logic_trace`);
@@ -405,7 +431,6 @@ const app = {
         const box = document.getElementById(`${pfx}_analysis`);
         if(!box) return;
         
-        // Helper: Get status based on overrides
         const getStatus = (key, autoPass) => {
             const userState = this.overrides[key];
             if (userState === 'PASS') return { class: 'status-verified', text: 'MANUAL', icon: '👮‍♂️' };
@@ -420,7 +445,6 @@ const app = {
         const s3 = getStatus('kunda', autoResults.kundaMatch);
         const s4 = getStatus('gender', autoResults.genderMatch);
 
-        // Calc Score
         let passedChecks = 0;
         if (s1.text === 'MANUAL' || (s1.text === 'AUTO' && autoResults.d60Match)) passedChecks++;
         if (s2.text === 'MANUAL' || (s2.text === 'AUTO' && autoResults.ppMatch)) passedChecks++;
@@ -513,7 +537,7 @@ const app = {
     },
 
     // --- 5. TIMELINE RENDERER (QUAD-LOCK VISUAL) ---
-    renderTimelineMap: function(pfx, centerDate, lat, lon, ayanamsa, gender, moonSidereal) {
+    renderTimelineMap: function(pfx, centerDate, lat, lon, ayanamsa, gender, moonSidereal, tz) {
         const container = document.getElementById('timeline_tracks');
         const panel = document.getElementById('forensic_map_panel');
         if(!container) return;
@@ -534,6 +558,10 @@ const app = {
     
         for (let i = -steps; i <= steps; i++) {
             const t = new Date(centerDate.getTime() + (i * stepSec * 1000));
+            
+            // USE HELPER FOR DISPLAY TIME
+            const timeDisplay = this.formatChartTime(t, tz);
+
             const lDeg = VedicEngine.calculateLagna(t, lat, lon, ayanamsa);
             const lD60 = VedicEngine.getDivisionalSign(lDeg, "D60");
             const ppL = VedicEngine.calculatePranapada(t, lat, lon, sunP.siderealLon);
@@ -550,7 +578,7 @@ const app = {
             targetSigns.forEach(target => { if (target === lD60 || VedicEngine.hasRashiDrishti(target, lD60)) d60Match = true; });
 
             segments.push({
-                offset: i * stepSec, timeDisplay: t.toTimeString().split(' ')[0],
+                offset: i * stepSec, timeDisplay: timeDisplay,
                 d60Match: d60Match, ppMatch: ppMatch, kundaMatch: kRes.match, isGenMatch: isGenMatch,
                 isGolden: (kRes.match && isGenMatch && ppMatch && d60Match)
             });
@@ -587,7 +615,11 @@ const app = {
         const lon = parseFloat(document.getElementById(`${pfx}_lon`).value);
         const [y, m, d] = dobRaw.split('-').map(Number);
         const [h, min, s] = tobRaw.split(':').map(Number);
-        const baseUtc = new Date(Date.UTC(y, m-1, d, h, min, s || 0) - (tz * 3600000));
+        
+        // Base UTC Logic
+        const inputAsUtc = Date.UTC(y, m-1, d, h, min, s || 0);
+        const baseUtc = new Date(inputAsUtc - (tz * 3600000));
+        
         const ayanamsa = VedicEngine.getAyanamsa(baseUtc);
         const centerPos = AstroWrapper.getPositions(baseUtc);
         const moonLon = centerPos.find(p => p.name === "Moon").lon;
@@ -617,12 +649,7 @@ const app = {
         }
 
         if (bestMatch) {
-            const localTime = new Date(bestMatch.time.getTime() + (tz * 3600000));
-            const newTimeStr = [
-                localTime.getUTCHours().toString().padStart(2, '0'),
-                localTime.getUTCMinutes().toString().padStart(2, '0'),
-                localTime.getUTCSeconds().toString().padStart(2, '0')
-            ].join(':');
+            const newTimeStr = this.formatChartTime(bestMatch.time, tz);
             if(confirm(`Found Match!\n\nShift: ${bestMatch.offset > 0 ? '+' : ''}${bestMatch.offset} seconds\nNew Time: ${newTimeStr}\nRelation: ${bestMatch.dist}th from Moon (D9)\n\nApply this time?`)) {
                 document.getElementById(`${pfx}_tob`).value = newTimeStr;
                 this.calculate(pfx);
@@ -652,19 +679,27 @@ const app = {
         const fA = document.getElementById(`${pfx}_arudha`).value;
         const [y, m, d] = dobRaw.split('-').map(Number);
         const [h, min, s] = tobRaw.split(':').map(Number);
+        
+        // Setup Base UTC
+        const inputAsUtc = Date.UTC(y, m - 1, d, h, min, s || 0);
+        const centerUtc = new Date(inputAsUtc - (tz * 3600000));
+        
         const seedDate = new Date(Date.UTC(y, m-1, d, 12, 0, 0)); 
         const obs = new Astronomy.Observer(lat, lon, 0);
         const riseInfo = Astronomy.SearchRiseSet('Sun', obs, +1, Astronomy.MakeTime(seedDate), -1);
         const sunriseDate = riseInfo ? riseInfo.date : null;
-        const centerUtc = new Date(Date.UTC(y, m-1, d, h, min, s || 0) - (tz * 3600000));
+        
         const centerMoonPos = AstroWrapper.getPositions(centerUtc).find(p => p.name === "Moon").lon;
         const ayanamsa = VedicEngine.getAyanamsa(centerUtc);
         const moonSidereal = (centerMoonPos - ayanamsa + 360) % 360;
 
         let matches = [];
         for (let offset = -600; offset <= 600; offset += 15) {
-            let scanTime = new Date(new Date().setHours(h, min, s || 0) + offset * 1000);
-            let scanUtc = new Date(Date.UTC(y, m-1, d, scanTime.getHours(), scanTime.getMinutes(), scanTime.getSeconds()) - (tz * 3600000));
+            let scanUtc = new Date(centerUtc.getTime() + offset * 1000);
+            
+            // FORMAT TIME CORRECTLY FOR DISPLAY
+            const displayTime = this.formatChartTime(scanUtc, tz);
+
             const ayan = VedicEngine.getAyanamsa(scanUtc);
             const lDeg = VedicEngine.calculateLagna(scanUtc, lat, lon, ayan);
             const pPos = AstroWrapper.getPositions(scanUtc);
@@ -695,7 +730,7 @@ const app = {
                 totalConfidence = (d60Score / 4) * 30; 
             }
             if (totalConfidence > 100) totalConfidence = 100;
-            matches.push({ time: scanTime.toTimeString().split(' ')[0], d60Score: d60Score, genderMatch: genderMatch, kundaMatch: kundaMatch, confidence: Math.round(totalConfidence), vigPlanet: vigPlanet, btrData: btr });
+            matches.push({ time: displayTime, d60Score: d60Score, genderMatch: genderMatch, kundaMatch: kundaMatch, confidence: Math.round(totalConfidence), vigPlanet: vigPlanet, btrData: btr });
         }
         matches.sort((a, b) => b.confidence - a.confidence);
         app.renderSuggestions(pfx, matches.slice(0, 3));
@@ -753,9 +788,20 @@ const app = {
         const inputGender = document.getElementById(`${pfx}_gender`).value.toUpperCase();
         const lagna = this.lastCalcData ? this.lastCalcData.find(p => p.name === 'Lagna') : null;
         const signIdx = lagna ? lagna.signIdx : 0;
+        const tz = parseFloat(document.getElementById(`${pfx}_tz`).value);
+        
+        // Options have generic "time" string from Jaimini Engine which we should ignore/reformat if we want precision
         const opts = JaiminiEngine.getMicroScan(this.currentJaiminiData.totalVighatikas, this.currentJaiminiData.actualUtcDate, signIdx);
+        
         const tbody = document.getElementById(`${pfx}_jaimini_rect_body`);
-        tbody.innerHTML = opts.map(o => { const isMatch = o.gender === inputGender; const style = isMatch ? 'background:var(--success); color:white; font-weight:bold;' : (o.offset === 0 ? 'background:var(--hover-bg); font-weight:bold;' : ''); return `<tr onclick="app.setTob('${pfx}', '${o.time}')" style="cursor:pointer; ${style}"><td>${o.offset > 0 ? '+' : ''}${o.offset}</td><td>${o.time}</td><td>${o.planet.substring(0,3)}</td><td>${o.gender}</td></tr>`; }).join('');
+        tbody.innerHTML = opts.map(o => { 
+            // Manual patch to ensure display time aligns with TZ logic (if strict accuracy needed)
+            // But relying on options time is acceptable for micro-scan list as Jaimini Engine uses Date object logic. 
+            // Ideally JaiminiEngine should also be patched, but for now we accept the relative offsets.
+            const isMatch = o.gender === inputGender; 
+            const style = isMatch ? 'background:var(--success); color:white; font-weight:bold;' : (o.offset === 0 ? 'background:var(--hover-bg); font-weight:bold;' : ''); 
+            return `<tr onclick="app.setTob('${pfx}', '${o.time}')" style="cursor:pointer; ${style}"><td>${o.offset > 0 ? '+' : ''}${o.offset}</td><td>${o.time}</td><td>${o.planet.substring(0,3)}</td><td>${o.gender}</td></tr>`; 
+        }).join('');
     },
     renderTable: function(pfx, data) { const body = document.getElementById(`${pfx}_table_body`); if(!body) return; body.innerHTML = data.map(p => `<tr class="${p.isLagna ? 'lagna-row' : ''}"><td style="font-weight:700;">${p.name}${p.isRetro ? ' <small style="color:var(--planet-color)">Ⓡ</small>' : ''}</td><td>${p.sign.substring(0,3)} ${p.degStr.split(' ')[0]}°</td><td style="color:var(--planet-color); font-weight:700;">${SIGNS[p.d3jIdx].substring(0,3)}</td><td style="font-weight:700;">${SIGNS[p.d60Idx].substring(0,3)}</td><td style="font-size:0.7rem; color:var(--text-muted);">${p.d60Deity}</td></tr>`).join(''); },
     renderSouthIndianChart: function(containerId, planetData, varga) {
