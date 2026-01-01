@@ -51,7 +51,10 @@
                     <div class="row">
                         <input type="date" id="m_dob">
                         <input type="time" id="m_tob" step="1">
-                        <input type="number" id="m_tz" value="5.5" placeholder="TZ" style="width:70px">
+                        <div style="display:flex; flex-direction:column; width: 70px;">
+                            <input type="number" id="m_tz" value="5.5" placeholder="TZ" style="width:100%">
+                            <span id="m_utc_hint" style="font-size:0.6rem; color:var(--text-muted); text-align:center; margin-top:2px;" title="Calculated UTC Time">--:-- Z</span>
+                        </div>
                     </div>
                     <input type="hidden" id="m_lat"><input type="hidden" id="m_lon">
                 </div>
